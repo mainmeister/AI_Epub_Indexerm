@@ -1,0 +1,17 @@
+# Database files
+*.db
+*.db-wal
+*.db-shm
+epub_catalog.db
+
+# EPUB files directory
+epub/
+*.epub
+
+# System and IDE files
+lost+found/
+.idea/
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
