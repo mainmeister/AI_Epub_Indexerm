@@ -58,6 +58,21 @@ def clean_text(text: str) -> str:
     text = WHITESPACE_CLEANER.sub(" ", text).strip()
     return text
 
+def export_file_list(paths: list, output_file: str):
+    """Writes a list of EPUB file paths to a specified output file, one per line."""
+    if not output_file:
+        return
+    try:
+        abs_output_path = os.path.abspath(output_file)
+        os.makedirs(os.path.dirname(abs_output_path), exist_ok=True)
+        with open(abs_output_path, "w", encoding="utf-8") as f:
+            for p in paths:
+                if p:
+                    f.write(f"{p}\n")
+        print(f"[+] Saved {len(paths)} matching EPUB path(s) to '{output_file}'.")
+    except Exception as e:
+        print(f"[!] Error writing output file '{output_file}': {e}")
+
 def parse_single_epub(file_path: str):
     """Parses metadata from an individual EPUB archive."""
     try:
@@ -529,7 +544,7 @@ def get_top_semantic_candidates(conn, query: str, top_k: int = 4):
             results.append((sim, book))
     return results
 
-def ask_sommelier(db_path: str, query: str, refresh: bool = False, limit: int = 4):
+def ask_sommelier(db_path: str, query: str, refresh: bool = False, limit: int = 4, output_file: str = None):
     """The Literary Sommelier: Conversational book recommendations using RAG with caching."""
     if not os.path.exists(db_path):
         print(f"[!] Database not found at {db_path}.")
@@ -550,18 +565,22 @@ def ask_sommelier(db_path: str, query: str, refresh: bool = False, limit: int = 
             print("=" * 80)
             print(f"\n{rec}\n")
             print("=" * 80)
+            cached_paths = []
             try:
                 book_ids = json.loads(book_ids_json)
                 print("Referenced Volumes in Catalogue:")
                 for idx, bid in enumerate(book_ids, 1):
                     b = cur.execute("SELECT title, author, path FROM books WHERE id = ?", (bid,)).fetchone()
                     if b:
+                        cached_paths.append(b[2])
                         print(f"  {idx}. {b[0]} — {b[1] or 'Unknown'}")
                         print(f"     Path: {b[2]}")
             except Exception:
                 pass
             print("=" * 80)
             conn.close()
+            if output_file:
+                export_file_list(cached_paths, output_file)
             return
 
     print(f"[*] Consulting catalogue for: '{query}'...")
@@ -569,13 +588,17 @@ def ask_sommelier(db_path: str, query: str, refresh: bool = False, limit: int = 
     if not candidates:
         print("[!] No candidate books found. Ensure embeddings exist.")
         conn.close()
+        if output_file:
+            export_file_list([], output_file)
         return
 
     candidate_text_blocks = []
     matched_ids = []
+    matched_paths = []
     for rank, (sim, b) in enumerate(candidates, 1):
         bid, title, author, subjects, desc, path = b
         matched_ids.append(bid)
+        matched_paths.append(path)
         desc_snippet = (desc[:320] + "...") if len(desc) > 320 else desc
         block = f"Book {rank}: \"{title}\" by {author or 'Unknown'}\nTags: {subjects or 'None'}\nSynopsis: {desc_snippet or 'None'}"
         candidate_text_blocks.append(block)
@@ -619,6 +642,8 @@ Keep your response engaging, concise, and courteous."""
         print(f"     Path: {b[5]}")
     print("=" * 80)
     conn.close()
+    if output_file:
+        export_file_list(matched_paths, output_file)
 
 def book_dossier(db_path: str, target: str, refresh: bool = False):
     """Generates and caches an instant Reader's Dossier for a book."""
@@ -829,7 +854,7 @@ Respond strictly with a JSON object in this format:
     print("[+] SQLite catalogue and Full-Text Search index (FTS5) updated permanently.")
     conn.close()
 
-def semantic_search(db_path: str, query: str, limit: int = 30):
+def semantic_search(db_path: str, query: str, limit: int = 30, output_file: str = None):
     if not os.path.exists(db_path):
         print(f"[!] Database not found at {db_path}.")
         return
@@ -841,6 +866,8 @@ def semantic_search(db_path: str, query: str, limit: int = 30):
     if count == 0:
         print("[!] No embeddings found. Please run --embed first.")
         conn.close()
+        if output_file:
+            export_file_list([], output_file)
         return
 
     print(f"[*] Embedding query: '{query}'...")
@@ -866,11 +893,13 @@ def semantic_search(db_path: str, query: str, limit: int = 30):
 
     print(f"[+] Scanned in {t1 - t0:.3f}s. Top {len(top_matches)} results for: '{query}'\n" + "=" * 80)
 
+    matching_paths = []
     for rank, (sim, bid) in enumerate(top_matches, 1):
         book = cur.execute("SELECT title, author, subjects, description, path FROM books WHERE id = ?", (bid,)).fetchone()
         if not book:
             continue
         title, author, subjects, desc, path = book
+        matching_paths.append(path)
         pct = sim * 100
         print(f"{rank}. [{pct:.1f}% Match] {title}")
         print(f"    Author:   {author or 'Unknown'}")
@@ -883,8 +912,10 @@ def semantic_search(db_path: str, query: str, limit: int = 30):
         print("-" * 80)
 
     conn.close()
+    if output_file:
+        export_file_list(matching_paths, output_file)
 
-def search_catalog(db_path: str, query: str, limit: int = 50):
+def search_catalog(db_path: str, query: str, limit: int = 50, output_file: str = None):
     if not os.path.exists(db_path):
         print(f"[!] Database not found at {db_path}. Please run --scan first.")
         return
@@ -910,12 +941,16 @@ def search_catalog(db_path: str, query: str, limit: int = 50):
         except Exception as e2:
             print(f"[!] Search query error: {e2}")
             conn.close()
+            if output_file:
+                export_file_list([], output_file)
             return
 
     conn.close()
 
+    matching_paths = []
     print(f"\n[+] Found {len(rows)} results for query: '{query}' (limit {limit})\n" + "="*80)
     for idx, (book_id, title, author, subjects, desc, path) in enumerate(rows, 1):
+        matching_paths.append(path)
         print(f"{idx}. {title}")
         print(f"   Author:   {author or 'Unknown'}")
         if subjects:
@@ -925,6 +960,9 @@ def search_catalog(db_path: str, query: str, limit: int = 50):
             print(f"   Summary:  {short_desc}")
         print(f"   Path:     {path}")
         print("-" * 80)
+
+    if output_file:
+        export_file_list(matching_paths, output_file)
 
 def show_stats(db_path: str):
     if not os.path.exists(db_path):
@@ -1003,6 +1041,7 @@ def main():
     parser.add_argument("--db", default=DEFAULT_DB_PATH, help="Path to SQLite database")
     parser.add_argument("--search", type=str, help="Search query (FTS5 syntax or keyword)")
     parser.add_argument("--limit", type=int, default=30, help="Max results for search")
+    parser.add_argument("--output", "-o", "--output-file", "--out", "--export", type=str, default=None, dest="output", help="Write matching EPUB file paths to the specified file")
     parser.add_argument("--batch-size", type=int, default=50, help="Batch size for embedding")
     parser.add_argument("--update", action="store_true", help="Incrementally scan new EPUBs and generate embeddings in one step")
     parser.add_argument("--stats", action="store_true", help="Display catalog and cache statistics")
@@ -1018,7 +1057,7 @@ def main():
     args = parser.parse_args()
 
     if args.ask:
-        ask_sommelier(args.db, args.ask, args.refresh, limit=min(args.limit, 6))
+        ask_sommelier(args.db, args.ask, args.refresh, limit=min(args.limit, 6), output_file=args.output)
     elif args.dossier:
         book_dossier(args.db, args.dossier, args.refresh)
     elif args.cover:
@@ -1034,9 +1073,9 @@ def main():
     elif args.embed:
         embed_catalog(args.db, args.batch_size, args.limit if args.limit != 30 else None)
     elif args.semantic_search:
-        semantic_search(args.db, args.semantic_search, args.limit)
+        semantic_search(args.db, args.semantic_search, args.limit, output_file=args.output)
     elif args.search:
-        search_catalog(args.db, args.search, args.limit)
+        search_catalog(args.db, args.search, args.limit, output_file=args.output)
     elif args.stats:
         show_stats(args.db)
     else:

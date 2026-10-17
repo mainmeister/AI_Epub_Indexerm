@@ -92,6 +92,9 @@ Search by keywords or FTS5 boolean expressions, ranked by relevance using SQLite
 ```bash
 python3 epub_indexer.py --search "dystopia OR surveillance" --limit 20
 python3 epub_indexer.py --search "Arthur Conan Doyle"
+
+# Export matching EPUB file paths to a file
+python3 epub_indexer.py --search "Arthur Conan Doyle" --output matched_books.txt
 ```
 
 ### 5. Semantic Vector Search
@@ -99,6 +102,9 @@ Retrieve volumes based on conceptual or thematic natural language queries:
 
 ```bash
 python3 epub_indexer.py --semantic-search "hard science fiction involving generational starships" --limit 10
+
+# Export semantic search results to a file
+python3 epub_indexer.py --semantic-search "cyberpunk artificial intelligence" -o results.txt
 ```
 
 ### 6. The Literary Sommelier (RAG Recommender)
@@ -107,8 +113,8 @@ Get conversational recommendations synthesizing library holdings:
 ```bash
 python3 epub_indexer.py --ask "I want an atmospheric Victorian gothic mystery with supernatural undertones"
 
-# Bypass cached recommendation to force regeneration
-python3 epub_indexer.py --ask "philosophical cyberpunk stories" --refresh
+# Bypass cached recommendation to force regeneration and save referenced EPUB paths
+python3 epub_indexer.py --ask "philosophical cyberpunk stories" --refresh --output picks.txt
 ```
 
 ### 7. Reader's Dossier
@@ -160,5 +166,6 @@ python3 epub_indexer.py --stats
 | `--dir <PATH>` | Target directory containing EPUB archives | `./epub` |
 | `--db <PATH>` | SQLite database file location | `./epub_catalog.db` |
 | `--limit <INT>` | Maximum search results or processed records | `30` |
+| `--output <PATH>`, `-o <PATH>` | Output file path to save matching EPUB file paths | `None` |
 | `--batch-size <INT>` | Batch size for Ollama embedding generation | `50` |
 | `--workers <INT>` | Worker process count for parallel metadata extraction | `CPU count` |
